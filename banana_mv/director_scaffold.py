@@ -50,8 +50,11 @@ def build_scaffold(req, segment, ending=None):
         phase = 'continuing'
     return {
         'version': VERSION,
+        # The H3 shot clock is frame-quantized; source-song time may end
+        # inside the last frame. Never promote padding to musical evidence.
         'source_interval_s': [round(segment['start'], 6),
-                              round(segment['start'] + segment['seconds'], 6)],
+                              round(min(segment['start']+segment['seconds'],
+                                        segment.get('song_seconds', segment['start']+segment['seconds'])), 6)],
         'clip_duration_s': round(segment['seconds'], 6),
         'timed_lyrics': [
             {'start_s': row['clip_start'], 'end_s': row['clip_end'], 'text': row['text']}
@@ -72,11 +75,8 @@ def build_scaffold(req, segment, ending=None):
                 'An excerpt may resolve a local event, but do not invent a full-film ending.'
             ),
         },
-        'director_freedom': (
-            'Decide how to film this interval from its assigned event; audio cues guide '
-            'accents and reactions, not shot quotas or mandatory genre actions. '
-            'Do not treat relative loudness as evidence of a chorus, lyric, instrument or KO.'
-        ),
+        # Creative freedom is stated once in the director system contract,
+        # not repeated N times as scaffold token overhead.
     }
 
 
@@ -84,7 +84,9 @@ def build_all_scaffolds(req, segments):
     """Precompute from exact existing clip boundaries; never repartition the song."""
     if not segments:
         return []
-    total = segments[-1]['start'] + segments[-1]['seconds']
+    # Existing source duration is authoritative when the last image-frame
+    # rounding extends a fractional last frame past the final decoded sample.
+    total = segments[0].get('song_seconds', segments[-1]['start'] + segments[-1]['seconds'])
     ending = ending_contract(req, total, segments)
     result = []
     for segment in segments:
