@@ -65,7 +65,7 @@ def load_structure(source, cache, seconds):
             folder/('Scripts/python.exe' if os.name=='nt' else 'bin/python'))
     if not python.is_file():
         raise RuntimeError(
-            '找不到音樂結構分析器的獨立 Python：'+str(python)+
+            '音樂結構分析器尚未安裝或缺少獨立 Python：'+str(python)+
             '。Windows 請先更新 Fusion Lab，再執行 tools/install_music_analyzer.ps1；'
             'Colab 請重新執行①安裝格。音樂結構分析未完成，不能假裝分析成功。')
     cache.parent.mkdir(parents=True, exist_ok=True)
