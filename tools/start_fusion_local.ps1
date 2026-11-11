@@ -30,22 +30,73 @@ $env:BANANA_MUSIC_PYTHON = Join-Path $DataRoot 'music-venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $env:BANANA_MUSIC_PYTHON -PathType Leaf)) {
     throw 'Missing music analyzer Python; Fusion launch aborted.'
 }
-$nodes = $null
-try { $nodes = Invoke-RestMethod -Uri "$ComfyUrl/object_info" -TimeoutSec 3 }
-catch {
-    $source = Join-Path $env:LOCALAPPDATA 'Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI'
-    $main = Join-Path $source 'main.py'
-    if (-not (Test-Path -LiteralPath $main)) { throw 'ComfyUI source not found. Start your existing CU130 ComfyUI first.' }
-    Write-Host 'Starting existing ComfyUI with CU130. Keep its console open.'
-    Start-Process -FilePath $python -WorkingDirectory $source -ArgumentList @('-u', ('"' + $main + '"'), '--base-directory', ('"' + $comfyRoot + '"'), '--listen', '127.0.0.1', '--port', '8000') | Out-Null
-    $deadline = (Get-Date).AddMinutes(2)
-    while ($null -eq $nodes -and (Get-Date) -lt $deadline) {
-        Start-Sleep -Seconds 2
-        try { $nodes = Invoke-RestMethod -Uri "$ComfyUrl/object_info" -TimeoutSec 3 }
-        catch { Write-Host 'Waiting for CU130 ComfyUI...' }
+# Reuse the verified external ComfyUI; NEVER launch a separate ComfyUI here.
+# The successfully working VNext/Classic configurations are authoritative
+# for service URL and INPUT directory, not merely an assumed port 8000.
+$explicitComfyUrl = $PSBoundParameters.ContainsKey('ComfyUrl')
+$candidates = @()
+if (-not $explicitComfyUrl) {
+    foreach ($entry in @(
+        @{ Label = 'VNext'; File = (Join-Path $env:LOCALAPPDATA 'BananaMVVNext\config.json') },
+        @{ Label = 'Classic'; File = (Join-Path $env:LOCALAPPDATA 'BananaMVClassic\config.json') }
+    )) {
+        if (-not (Test-Path -LiteralPath $entry.File -PathType Leaf)) { continue }
+        try {
+            $prior = Get-Content -LiteralPath $entry.File -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($prior.comfy_url -and $prior.comfy_input_dir) {
+                $candidates += [pscustomobject]@{
+                    Label = $entry.Label
+                    Url = [string]$prior.comfy_url
+                    InputDir = [string]$prior.comfy_input_dir
+                }
+            }
+        } catch {
+            Write-Host "Skipping unreadable $($entry.Label) ComfyUI config: $($_.Exception.Message)"
+        }
     }
 }
-if ($null -eq $nodes.TextGenerate) { throw 'Start your working CU130 ComfyUI on port 8000 first.' }
+$candidates += [pscustomobject]@{
+    Label = $(if ($explicitComfyUrl) { 'Explicit -ComfyUrl' } else { 'Fusion default' })
+    Url = $ComfyUrl
+    InputDir = (Join-Path $comfyRoot 'input')
+}
+$working = $null
+$checked = @()
+foreach ($candidate in $candidates) {
+    $url = ([string]$candidate.Url).TrimEnd('/')
+    if (-not $url) { continue }
+    try {
+        $nodes = Invoke-RestMethod -Uri "$url/object_info" -TimeoutSec 5
+        $nodeNames = @($nodes.PSObject.Properties.Name)
+        $required = @('TextGenerate', 'MiniMaxH3AudioConditioningT8')
+        $missing = @($required | Where-Object { $nodeNames -notcontains $_ })
+        if ($missing.Count -gt 0) {
+            $checked += "$($candidate.Label) $url : missing $($missing -join ', ')"
+            continue
+        }
+        if (-not (Test-Path -LiteralPath $candidate.InputDir -PathType Container)) {
+            $checked += "$($candidate.Label) $url : input directory does not exist ($($candidate.InputDir))"
+            continue
+        }
+        $working = $candidate
+        $ComfyUrl = $url
+        break
+    } catch {
+        $checked += "$($candidate.Label) $url : not responding"
+    }
+}
+if ($null -eq $working) {
+    $details = $checked -join [Environment]::NewLine
+    throw ("No verified working H3/T8 ComfyUI was found. Fusion did not start a replacement service." +
+           [Environment]::NewLine + $details + [Environment]::NewLine +
+           "Start the same CU130 ComfyUI instance used by the working Classic/VNext setup, " +
+           "then rerun Fusion. To point to a specific one, use -ComfyUrl.")
+}
+$comfyInputDir = [string]$working.InputDir
+Write-Host "Verified ComfyUI source: $($working.Label)"
+Write-Host "Verified T8 node: MiniMaxH3AudioConditioningT8"
+Write-Host "ComfyUI URL: $ComfyUrl"
+Write-Host "ComfyUI input: $comfyInputDir"
 $guideDir = Join-Path $projectRoot 'guides'
 $guide = Join-Path $guideDir 'VIDEO_PROMPT_WRITING_GUIDE_ref_en.md'
 New-Item -ItemType Directory -Force -Path $guideDir | Out-Null
@@ -63,7 +114,7 @@ elseif (Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'BananaMVVNext\confi
     if ($null -ne $previous.rewriter) { $config | Add-Member -NotePropertyName 'rewriter' -NotePropertyValue $previous.rewriter }
 }
 $config | Add-Member -NotePropertyName 'comfy_url' -NotePropertyValue $ComfyUrl -Force
-$config | Add-Member -NotePropertyName 'comfy_input_dir' -NotePropertyValue (Join-Path $comfyRoot 'input') -Force
+$config | Add-Member -NotePropertyName 'comfy_input_dir' -NotePropertyValue $comfyInputDir -Force
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json -Depth 20), $utf8)
 $env:BANANA_DATA = $DataRoot
