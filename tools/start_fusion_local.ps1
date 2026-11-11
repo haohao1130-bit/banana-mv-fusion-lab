@@ -28,7 +28,7 @@ foreach ($binary in @('ffmpeg','ffprobe')) {
 if ($LASTEXITCODE -ne 0) { throw 'Music structure analyzer installation failed.' }
 $env:BANANA_MUSIC_PYTHON = Join-Path $DataRoot 'music-venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $env:BANANA_MUSIC_PYTHON -PathType Leaf)) {
-    throw '音樂結構分析器缺少 Python，啟動已停止。'
+    throw 'Missing music analyzer Python; Fusion launch aborted.'
 }
 $nodes = $null
 try { $nodes = Invoke-RestMethod -Uri "$ComfyUrl/object_info" -TimeoutSec 3 }
