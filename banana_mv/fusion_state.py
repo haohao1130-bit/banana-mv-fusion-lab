@@ -99,11 +99,11 @@ def ending_note(contract):
     """Respect source-time ending including a <=3s terminal tail and excerpts."""
     phase=(contract or {}).get('phase')
     if phase=='continuing':
-        return ('[STORY TIME LOCK] Ongoing interval: no unassigned final KO, winner '
+        return ('[STORY TIME LOCK] Ongoing interval: no unassigned final knockout, winner '
                 'declaration, awards or whole-story resolution. Do not jump ahead.\n')
     if phase=='terminal_hold':
         return ('[STORY TIME LOCK] Residual tail: sustain achieved consequences; '
-                'no new KO or replay of victory unless explicitly timed here.\n')
+                'no new knockout or replay of victory unless explicitly timed here.\n')
     if phase=='resolving':
         return ('[STORY TIME LOCK] Resolution interval: film only this clip\'s '
                 'assigned decisive action, at its source-audio time.\n')
