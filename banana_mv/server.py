@@ -335,9 +335,21 @@ def worker(job, cfg, original, song, drive):
             audio_started=time.perf_counter()
             music_analysis = load_analysis(song, work/'audio_analysis.json')
             structure = None
+            structure_warning = None
             if job['request'].get('music_structure',False):
                 job['audio_analysis']={'status':'analyzing_structure'}; write_state(job)
-                structure = load_structure(song, work/'music_structure.json', music_analysis['seconds'])
+                try:
+                    structure = load_structure(song, work/'music_structure.json', music_analysis['seconds'])
+                except RuntimeError as error:
+                    if '尚未安裝' not in str(error):
+                        raise  # A genuinely failing installed analyzer should remain diagnosable.
+                    # Optional music-section predictions must never block the
+                    # deterministic audio timeline, SRT or native H3 writer.
+                    structure_warning = ('已略過選填的音樂結構分析：分析器未安裝。'
+                                         '一般音訊強弱／起音／停頓仍會分析，接續 Python 通告單與 9B 寫稿。')
+                    job['music_structure_warning'] = structure_warning
+                    job['music_structure_status'] = 'unavailable'
+                    write_state(job)
             vocal_analysis = load_analysis(drive, work/'vocal_analysis.json') if drive != song else None
             for seg in job['segments']:
                 seg['audio_evidence'] = segment_evidence(music_analysis, seg, vocal_analysis)
@@ -345,8 +357,10 @@ def worker(job, cfg, original, song, drive):
                     seg['audio_evidence']['music_structure'] = local_structure(structure, seg)
             job['audio_analysis'] = {'version': AUDIO_VERSION, 'status': 'ready',
                                      'pulse': music_analysis['pulse'],
-                                     'structure': {'status':'ready','bpm':structure['bpm'],
-                                                   'segments':structure['segments']} if structure else None}
+                                     'structure': ({'status':'ready','bpm':structure['bpm'],
+                                                    'segments':structure['segments']} if structure
+                                                   else {'status':'unavailable','reason':structure_warning}
+                                                   if structure_warning else None)}
             if job['request'].get('director_scaffold_version')==2:
                 job.setdefault('fusion_v2_metrics',{})['audio_analysis_ms']=round(
                     (time.perf_counter()-audio_started)*1000,2)
