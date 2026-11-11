@@ -22,6 +22,14 @@ if ($LASTEXITCODE -ne 0) { throw "Python lacks Pillow or numpy: $python. Select 
 foreach ($binary in @('ffmpeg','ffprobe')) {
     if (-not (Get-Command $binary -ErrorAction SilentlyContinue)) { throw "$binary is missing from PATH." }
 }
+# Music structure is enabled by default: install its independent CPU-only
+# Python environment before accepting jobs. Skip completed pinned installs.
+& "$PSScriptRoot\install_music_analyzer.ps1" -PythonPath $python -DataRoot $DataRoot
+if ($LASTEXITCODE -ne 0) { throw 'Music structure analyzer installation failed.' }
+$env:BANANA_MUSIC_PYTHON = Join-Path $DataRoot 'music-venv\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $env:BANANA_MUSIC_PYTHON -PathType Leaf)) {
+    throw '音樂結構分析器缺少 Python，啟動已停止。'
+}
 $nodes = $null
 try { $nodes = Invoke-RestMethod -Uri "$ComfyUrl/object_info" -TimeoutSec 3 }
 catch {
