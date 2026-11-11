@@ -88,7 +88,8 @@ def build_all_scaffolds(req, segments):
     ending = ending_contract(req, total, segments)
     result = []
     for segment in segments:
-        local = dict(segment, direction_ending_contract=ending)
+        local = dict(segment, song_seconds=total, segment_count=len(segments),
+                     direction_ending_contract=ending)
         result.append(build_scaffold(req, local, clip_ending(req, local)))
     return result
 
