@@ -107,3 +107,48 @@ def ensure_scaffolds(req, segments):
         # Do not rewrite frozen scopes on resume after the plan was approved.
         if seg.get('director_scaffold', {}).get('version') != VERSION:
             seg['director_scaffold'] = scaffold
+
+
+def build_call_sheet(req, segment, row, *, current_event=None,
+                     fixed_reference_settings='', opening_frame=None):
+    """One filming commission; Python owns facts, the writer owns camerawork.
+
+    A call sheet carries only the local allocated event, never the complete
+    outcome or the full-script plan. Timed SRT was authored by the user, not
+    transcribed from audio. Physical state is planned, not visually observed.
+    """
+    if req.get('director_scaffold_version') != VERSION:
+        raise ValueError('Filming call sheets require Fusion scaffold version 2.')
+    if row.get('handoff_version') != 1:
+        raise ValueError('A call sheet requires a validated isolated clip assignment.')
+    scaffold = segment.get('director_scaffold')
+    if not isinstance(scaffold, dict) or scaffold.get('version') != VERSION:
+        scaffold = build_scaffold(req, segment)
+    state = row.get('fusion_state') or segment.get('fusion_state') or {}
+    entry = dict(state.get('in', {}))
+    changes = list(state.get('changes', []))
+    ending = dict(state.get('out', entry))
+    start_frame = int(segment.get('start_frame', round(segment['start'] * 24)))
+    frames = int(segment.get('frames', round(segment['seconds'] * 24)))
+    sheet = {
+        'contract': 'FILMING_CALL_SHEET_V2',
+        'segment_index': segment['index'],
+        'frame_window_half_open': [start_frame, start_frame + frames],
+        'source_window_s': scaffold['source_interval_s'],
+        'clip_shot_clock_s': scaffold['clip_duration_s'],
+        'primary_mode': row['mode'],
+        'current_event_only': row['event'] if current_event is None else current_event,
+        'physical_state': {
+            'entry': entry, 'authorized_changes_this_clip': changes,
+            'planned_exit': ending, 'visual_verified': False,
+        },
+        'source_audio': scaffold['music'],
+        'user_supplied_srt_clip_local': scaffold['timed_lyrics'],
+        'resolution_gate': scaffold['story_gate'],
+        'adaptation': 'FREE' if req.get('story_plan', True) else 'FAITHFUL',
+    }
+    if fixed_reference_settings:
+        sheet['fixed_reference_settings'] = fixed_reference_settings
+    if opening_frame:
+        sheet['opening_frame'] = opening_frame
+    return sheet
