@@ -365,6 +365,8 @@ def worker(job, cfg, original, song, drive):
                     seg.pop('shoot_setup',None)
                     seg['fixed_reference_settings']=plan.get('shared_setup','')
                     seg['direction_ending_contract']=plan['ending_contract']
+                    if job['request'].get('scene_state_version')==3:
+                        seg['fusion_state']=row.get('fusion_state',{})
                 if plan['version']==4:
                     seg['prompt']=row['prompt']
                     (work/f'{seg["index"]:02d}_prompt_v1.txt').write_text(row['prompt'],encoding='utf-8')
@@ -379,6 +381,12 @@ def worker(job, cfg, original, song, drive):
                 if index and plan['version']!=5:
                     seg['previous_planned_event'] = plan['segments'][index-1]['event']
             job['director_plan'] = {'version':plan['version'], 'status':'ready'}
+            if job['request'].get('scene_state_version')==3:
+                # Metadata is planned state, not a claim that H3 visually obeyed.
+                job['fusion_state_summary']={'version':3,'visual_verified':False,
+                    'tracked_items':len({key for seg in job['segments']
+                                          for key in seg.get('fusion_state',{}).get('in',{})}),
+                    'model_calls_for_state':0}
             if job['request'].get('plan_review'):
                 job['plan_preview_setup']=plan.get('shared_setup','')
             job['status']='running'; write_state(job)
@@ -568,9 +576,10 @@ def start(req):
         raise ValueError('先搓丹方需要開啟本地提示詞改寫。')
     if not isinstance(req.get('persistent_scene_state',True),bool):
         raise ValueError('persistent_scene_state 必須為布林值。')
-    # New projects allocate once, then write each isolated native prompt. Old projects keep their
-    # original request fields when resumed; creating a new job never re-enables it.
-    req.update(scene_state_version=0,persistent_scene_state=False)
+    # Fusion V1 uses Python-only snapshots embedded in the SAME schema-5 allocation.
+    # Version 3 must NEVER enter the older version-1 9B scene-state pipeline.
+    # Legacy projects retain saved request fields on resume.
+    req.update(scene_state_version=3,persistent_scene_state=True)
     if 'face_identity' in req and not isinstance(req['face_identity'], bool):
         raise ValueError('face_identity 必須為布林值。')
     req.setdefault('music_structure',False)
