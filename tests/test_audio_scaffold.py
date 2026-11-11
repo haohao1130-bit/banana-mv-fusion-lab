@@ -177,6 +177,25 @@ class AudioScaffoldV2Tests(unittest.TestCase):
                     self.assertIn('decisive punch',sheet['current_event_only'])
             self.assertEqual(native.call_count,4)
             self.assertEqual(allocator.call_count+native.call_count,5)
+            # A/B the SAME assigned event, native guide, images and state.
+            # We compare only the local USER commission, not the official guide.
+            v1writer=Mock(return_value=native_prompt(1))
+            v1req=dict(req,director_scaffold_version=0)
+            v1seg=dict(rows[1],director_plan=plan['segments'][1],
+                       fixed_reference_settings=plan['shared_setup'],
+                       direction_ending_contract=plan['ending_contract'])
+            write_shoot_prompt(cfg,v1req,v1seg,images,None,v1writer)
+            legacy_text=v1writer.call_args.args[2][0][1]
+            native_for_second=Mock(return_value=native_prompt(1))
+            newseg=dict(rows[1],director_plan=plan['segments'][1],
+                        fixed_reference_settings=plan['shared_setup'],
+                        direction_ending_contract=plan['ending_contract'])
+            write_shoot_prompt(cfg,req,newseg,images,None,native_for_second)
+            modern_text=native_for_second.call_args.args[2][0][1]
+            self.assertLess(len(modern_text),len(legacy_text))
+            self.assertIn('SIX native sections',modern_text)
+            self.assertIn('Current clip script:',legacy_text)
+            self.assertNotIn('Current clip script:',modern_text)
             cached=ensure_shoot_plan(cfg,req,rows,images,root,allocator)
             self.assertEqual(cached,plan)
             self.assertEqual(allocator.call_count,1)
