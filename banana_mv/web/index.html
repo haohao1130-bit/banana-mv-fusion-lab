@@ -41,7 +41,7 @@ button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid #f4
 <label><input id="story_plan" type="checkbox" checked> 電影導演・主軸內自由發揮（需開啟 9B）</label><p class="muted">勾選：保留故事主軸、因果、主要轉折與指定結果，自由設計動作細節、演唱穿插、鏡頭與剪輯。結尾依上方製作範圍安排。未勾選：忠於劇本，以原事件意義與順序安排拍攝。影片風格保留你的選擇，也可結合故事需要的其他內容。關閉 9B 時直接使用原控制詞。</p>
 <input id="persistent_scene_state" type="checkbox" hidden disabled><p class="muted">先分配各段故事，再逐段由 9B 寫完整拍攝稿；角色、服裝與道具依當段劇本，固定角色與場景設定共同交接，後段不重讀前段故事。已建立專案仍沿用保存的流程。</p>
 <label><input id="audio_analysis" type="checkbox" checked> 音樂分析引導（強弱、起音、停頓）</label><p class="muted">先在本機分析歌曲，再把分段時間資訊交給 9B。節奏僅為估計；不辨識歌詞、情緒或副歌，可關閉對照。</p>
-<label><input id="music_structure" type="checkbox" checked> 音樂結構分析（節拍、副歌、橋段、Solo）</label><p class="muted">先分析整首歌，讓 9B 配合段落轉折安排鋪陳與爆點。結果是模型預測；首次需下載模型，CPU 分析需要額外時間。需同時開啟上方音樂分析引導。</p>
+<label><input id="music_structure" type="checkbox" checked> 音樂結構分析（BPM、節拍、主歌、副歌、橋段、Solo）</label><p class="muted">由獨立的 Python CPU 分析器聽完整首歌，再把預測的音樂段落與拍點交給 9B。Windows 的 Fusion 啟動器會安裝分析環境；Colab 請先執行①安裝。首次分析另需下載模型權重、使用額外 CPU 時間。與上方「音樂分析引導」同時開啟；結果是預測，不會改動原曲。</p>
 <label><input id="face_identity" type="checkbox" checked> 人物身分優先（Face Identity Lock V1）</label><p class="muted">最終提示詞保留原圖人物特徵，容許表情、側臉與動作。屬文字引導，效果待實測；可關閉作對照。</p>
 <label><input id="kitchen_attention" type="checkbox" checked> Kitchen INT8 注意力</label>
 <label><input id="sparse_attention" type="checkbox"> SOL 稀疏注意力</label>
