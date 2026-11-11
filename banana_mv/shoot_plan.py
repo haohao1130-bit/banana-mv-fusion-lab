@@ -11,7 +11,7 @@ from banana_mv.mv_scope import clip_ending, ending_contract
 from banana_mv.scene_state import SceneStateError, atomic_json, digest, rewrite_retry_count
 from banana_mv.creative_contract import creative_contract, CONTRACT_POLICY
 from banana_mv.fusion_state import ALLOCATION_RULES, compile_timeline, ending_note, fact_note
-from banana_mv.director_scaffold import ensure_scaffolds
+from banana_mv.director_scaffold import ensure_scaffolds, build_call_sheet
 
 
 # Match Toybox's native Ref2VA enhancement role, rather than treating the
@@ -429,7 +429,7 @@ def write_shoot_prompt(cfg,req,segment,originals,tail,rewrite,progress=None):
 including its per-shot composition, lighting, actions and camera movement.
 When the local audio context contains predicted music sections or downbeats,
 use only those SUPPLIED cues for meaningful action payoffs, camera reveals and
-performance highlights. Put shot times on the LOCAL frame-bounded clip clock;
+performance highlights. Write their timing into the shots, not an analysis appendix. Put shot times on the LOCAL frame-bounded clip clock;
 never estimate a new song timeline or claim an acoustic prediction is certain.
 Keep anticipation and contrast; do not cut on every beat. Labels can be wrong and
 do not identify instruments or override vocal roles. Use loudness only as acoustic evidence.
@@ -484,7 +484,55 @@ Return only the native filming prompt, no analysis, JSON or management instructi
     text+='\n'+CLIP_INTENSITY[req.get('intensity','high')]
     if req.get('face_identity',True):text+='\nPreserve the assigned reference identities through motion and expressions.'
     text+='\nWhen a permitted singer appears, prefer waist-up or closer for clear lip sync.'
-    text+='\n\nClip timing and audio context:\n'+json.dumps(context,ensure_ascii=False)
+    if scaffold_enabled:
+        # A single compact commission replaces the long legacy management prose.
+        # The OFFICIAL H3 native guide remains in the system message untouched.
+        call_sheet=build_call_sheet(
+            req,segment,row,current_event=connected(row['event']),
+            fixed_reference_settings=context.get('fixed_reference_settings',''),
+            opening_frame=context.get('first_frame'))
+        text=(
+            'FILMING CALL SHEET: Python has already scheduled the source time, '
+            'overlapping SRT, audio evidence, and authorized physical changes. '
+            'These are facts and limits, NOT a camera template. '
+            'Do not recalculate song intervals or invent lyrics, instruments, '
+            'chorus labels or unseen prior events. The clip-local shot clock '
+            'starts at 0 and ends at clip_shot_clock_s; source-time frame '
+            'windows and H3 alignment padding are NOT extra dramatic time.\n'
+            'Film ONLY current_event_only, beginning from physical_state.entry. '
+            'Perform authorized_changes_this_clip once, within this interval, '
+            'and leave the planned_exit state. Do not reset wardrobes or '
+            'repeat completed milestones. Apply resolution_gate to the '
+            'assigned event, not as permission to invent a new finale. '
+            'Use source_audio only as measured cues or explicitly predicted '
+            'structure; it does not prove the contents of the recording. '
+            'Provided SRT is timing reference, not dialogue or required overlays.\n'
+            'The fixed reference settings bind roles, places and identity, '
+            'not mandatory appearance in every shot or frozen reference poses. '
+            'Choose original, filmable coverage from the event: concrete '
+            'perspective, framing, camera path, speed, light direction, '
+            'reactions and consequences. Intercut separate locations in '
+            'separate full-frame views; no split-screen. Respect the user '
+            'vocalist assignment. <Audio 1>: fully_copy, unchanged; no '
+            'invented dialogue, subtitles, sound effects or extra score.\n'
+            'Follow the complete official H3 guide in the system message: '
+            'deliver its SIX native sections in order, including '
+            'detailed_description with [Shot N] and LOCAL cut times. '
+            'Return ONLY the native final filming prompt, not this JSON '
+            'or an analysis.\n'
+            + adaptation_direction(req) + '\n'
+            + CLIP_INTENSITY[req.get('intensity','high')] + '\n'
+            + ('Dynamic cutting is enabled: select varying motivated coverage and intercuts; '
+               'no fixed shot quota, no repetitive camera recipe.\n'
+               if req.get('dynamic_cuts',True) else
+               'Prefer motivated longer takes without a mandatory shot quota.\n')
+            + ('Preserve the same referenced identity while allowing expressive movement.\n'
+               if req.get('face_identity',True) else '')
+            + 'FILMING CALL SHEET JSON (input only):\n'
+            + json.dumps(call_sheet,ensure_ascii=False)
+        )
+    else:
+        text+='\n\nClip timing and audio context:\n'+json.dumps(context,ensure_ascii=False)
     refs=([tail] if tail else [])+list(originals)
     parts=[('text',text)]+_pictures(refs)
     attempts=parts;segment['director_mode']=row['mode']
