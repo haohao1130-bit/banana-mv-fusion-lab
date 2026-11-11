@@ -563,7 +563,10 @@ def start(req):
              sparse_attention=req.get('sparse_attention',req.get('acceleration',False)))
     from banana_mv.mv_scope import validate_scope
     validate_scope(req['project_scope'])
-    req['rewrite_retries']=rewrite_retry_count(req)
+    # Strict Fusion V1 core budget: one upstream allocation and one writer
+    # attempt per segment. Invalid 9B delivery fails visibly; no silent retries.
+    rewrite_retry_count(req)  # still validate the submitted 0-5 field
+    req['rewrite_retries']=0 if req['scene_state_version']==3 else rewrite_retry_count(req)
     req.setdefault('plan_review',False)
     if not isinstance(req['plan_review'],bool):
         raise ValueError('先搓丹方必須為布林值。')
