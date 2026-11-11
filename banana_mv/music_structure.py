@@ -58,9 +58,16 @@ def load_structure(source, cache, seconds):
                 return dict(identity, **validate_result(saved, seconds))
         except (ValueError, KeyError, TypeError, OSError):
             pass
-    python = Path(os.environ.get('BANANA_MUSIC_PYTHON', ROOT/'.music-venv/bin/python'))
+    configured=os.environ.get('BANANA_MUSIC_PYTHON')
+    folder=(Path(os.environ['BANANA_DATA'])/'music-venv'
+            if os.environ.get('BANANA_DATA') else ROOT/'.music-venv')
+    python=(Path(configured) if configured else
+            folder/('Scripts/python.exe' if os.name=='nt' else 'bin/python'))
     if not python.is_file():
-        raise RuntimeError('音樂結構分析器尚未安裝，請重新執行 Colab 安裝格；或關閉「音樂結構分析」做對照。')
+        raise RuntimeError(
+            '找不到音樂結構分析器的獨立 Python：'+str(python)+
+            '。Windows 請先更新 Fusion Lab，再執行 tools/install_music_analyzer.ps1；'
+            'Colab 請重新執行①安裝格。音樂結構分析未完成，不能假裝分析成功。')
     cache.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='music-', dir=cache.parent) as temp:
         work = Path(temp)
