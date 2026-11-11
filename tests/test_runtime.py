@@ -140,8 +140,7 @@ class RuntimeTests(unittest.TestCase):
                 self.assertTrue(all(row['source']=='existing' for row in receipt))
 
     def test_notebook_code_cells_compile_and_have_no_image_install_option(self):
-        path=ROOT/'Banana_MV_Public.ipynb'
-        if not path.exists():path=ROOT/'Banana_MV_Colab.ipynb'
+        path=ROOT/'BANANAMV_FUSION_LAB.ipynb'
         notebook=json.loads(path.read_text())
         for cell in notebook['cells']:
             source=''.join(cell['source'])
