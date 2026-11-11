@@ -3,7 +3,7 @@
 **Classic × VNext 融合實驗室（Public / Experimental）**
 
 > ⚠️ 這是獨立實驗倉庫，**不是**正式 Classic，也不是 VNext 主線。
-> 第一階段先從已恢復的 Classic MAIN 建立可執行基底，再逐項引入並驗證 VNext 的有效能力；**目前尚未聲稱完成融合**。
+> 已由 Classic MAIN 建立隔離基底，並加入 **V1 Python 狀態轉移**與 **V2 Audio-Driven Filming Call Sheet**。這裡的合併與 CI 驗證不是 H3 GPU 成片驗證。
 
 ## 官方入口
 
@@ -24,6 +24,8 @@
 詳細範圍、版本來源與逐步驗收請見 [docs/FUSION_PLAN.md](docs/FUSION_PLAN.md)。
 
 **Fusion V1 初步實作與狀態標記規格：**[docs/FUSION_V1.md](docs/FUSION_V1.md)。V1 使用同一次全曲規劃輸出簡短狀態標記，再由 Python 驗證轉移；不新增狀態專屬模型呼叫。目前只驗證**計畫連續性**，尚不保證 H3 成片效果。
+
+**Fusion V2 Python 製片通告單規格與驗收：**[docs/FUSION_V2.md](docs/FUSION_V2.md)。V2 延用原本的歌曲切片、使用者 SRT 對時、音訊證據與結局契約，讓 9B 全曲分配一次事件，再以每段一張 Call Sheet 執行原生 H3 寫稿。新任務預設 V2；API 可用 `director_scaffold_version=0` 保留 V1 A/B 對照。
 
 ## 執行與資料隔離
 
