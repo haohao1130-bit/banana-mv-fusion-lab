@@ -2,11 +2,12 @@ param(
     [string]$ComfyUrl = 'http://127.0.0.1:8000',
     [int]$Port = 8192,
     [string]$DataRoot = (Join-Path $env:LOCALAPPDATA 'BananaMVFusionLab'),
-    [string]$PythonPath = ''
+    [string]$PythonPath = '',
+    [string]$ComfyRoot = (Join-Path $env:USERPROFILE 'Documents\ComfyUI')
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$comfyRoot = Join-Path $env:USERPROFILE 'Documents\ComfyUI'
+$comfyRoot = $ComfyRoot
 $vnextPython = Join-Path $comfyRoot '.venv\Scripts\python.exe'
 $cu130Python = Join-Path $env:LOCALAPPDATA 'Banana9B-cu130\Scripts\python.exe'
 if (-not $PythonPath) {
@@ -21,14 +22,6 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 if ($LASTEXITCODE -ne 0) { throw "Python lacks Pillow or numpy: $python. Select the same working Python as VNext." }
 foreach ($binary in @('ffmpeg','ffprobe')) {
     if (-not (Get-Command $binary -ErrorAction SilentlyContinue)) { throw "$binary is missing from PATH." }
-}
-# Music structure is enabled by default: install its independent CPU-only
-# Python environment before accepting jobs. Skip completed pinned installs.
-& "$PSScriptRoot\install_music_analyzer.ps1" -PythonPath $python -DataRoot $DataRoot
-if ($LASTEXITCODE -ne 0) { throw 'Music structure analyzer installation failed.' }
-$env:BANANA_MUSIC_PYTHON = Join-Path $DataRoot 'music-venv\Scripts\python.exe'
-if (-not (Test-Path -LiteralPath $env:BANANA_MUSIC_PYTHON -PathType Leaf)) {
-    throw 'Missing music analyzer Python; Fusion launch aborted.'
 }
 # Reuse the verified external ComfyUI; NEVER launch a separate ComfyUI here.
 # The successfully working VNext/Classic configurations are authoritative
@@ -97,6 +90,14 @@ Write-Host "Verified ComfyUI source: $($working.Label)"
 Write-Host "Verified T8 node: MiniMaxH3AudioConditioningT8"
 Write-Host "ComfyUI URL: $ComfyUrl"
 Write-Host "ComfyUI input: $comfyInputDir"
+# Music structure is enabled by default: install its independent CPU-only
+# Python environment before accepting jobs. Skip completed pinned installs.
+& "$PSScriptRoot\install_music_analyzer.ps1" -PythonPath $python -DataRoot $DataRoot
+if ($LASTEXITCODE -ne 0) { throw 'Music structure analyzer installation failed.' }
+$env:BANANA_MUSIC_PYTHON = Join-Path $DataRoot 'music-venv\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $env:BANANA_MUSIC_PYTHON -PathType Leaf)) {
+    throw 'Missing music analyzer Python; Fusion launch aborted.'
+}
 $guideDir = Join-Path $projectRoot 'guides'
 $guide = Join-Path $guideDir 'VIDEO_PROMPT_WRITING_GUIDE_ref_en.md'
 New-Item -ItemType Directory -Force -Path $guideDir | Out-Null
