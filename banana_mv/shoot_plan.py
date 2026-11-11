@@ -166,8 +166,9 @@ intensity changes the filmmaking, not the assigned characters, vocal roles or ou
 
 
 ALLOCATION_SYSTEM = """Prepare a filmable music-video story across the given source intervals.
-When audio_evidence.music_structure is present, its labels and beat/downbeat times
-are fallible model predictions, not loudness guesses. Use section transitions to
+When scaffold.music.predicted_structure (or legacy audio_evidence.music_structure)
+is present, its labels and beat/downbeat times are fallible model predictions,
+not loudness guesses. A relative energy level NEVER identifies verse/chorus. Use section transitions to
 build anticipation, contrast and a few motivated story/performance payoffs. Allocate
 the main climax once where the music and requested story support it; do not replay
 the finale in each chorus. Carry clip-local musical timing into each commission.
@@ -217,7 +218,10 @@ Distinguish explicit required milestones and hard restrictions from optional
 staging suggestions. Carry the selected adaptation policy through all intervals.
 Parallel performance and story strands may intercut; no singer quota, mandatory cast
 attendance, shot list or complete dramatic arc per interval. Allocate a feasible amount
-of action to each duration. Respect local_srt cue timing and each interval's ending.
+of action to each duration. Respect scaffold.timed_lyrics (or legacy local_srt) clip-local SRT timing.
+scaffold.story_gate (or legacy ending) fixes the allowed resolution scope.
+The time slots, durations, SRT overlaps and audio evidence are computed by Python;
+NEVER recalculate, subdivide or move their boundaries. Allocate events only.
 Distribute the developed story across intervals, splitting a sequence when needed.
 Allocate opening, development and resolution across the available time; do not finish
 all events early and copy the finale to fill remaining slots. Each one-time event
@@ -423,9 +427,10 @@ def write_shoot_prompt(cfg,req,segment,originals,tail,rewrite,progress=None):
           "Original prompt:\n"+fusion_note+"Current clip script:\n"+connected(row['event'])+"\n\n")
     text+="""Enhance this ONE clip script into the guide's final native H3 filming prompt,
 including its per-shot composition, lighting, actions and camera movement.
-When audio_evidence.music_structure or scaffold.music.predicted_structure is supplied, use its predicted local section
-changes and selected downbeats to motivate action payoffs, camera reveals and
-performance highlights. Write their timing into the shots, not an analysis appendix.
+When the local audio context contains predicted music sections or downbeats,
+use only those SUPPLIED cues for meaningful action payoffs, camera reveals and
+performance highlights. Put shot times on the LOCAL frame-bounded clip clock;
+never estimate a new song timeline or claim an acoustic prediction is certain.
 Keep anticipation and contrast; do not cut on every beat. Labels can be wrong and
 do not identify instruments or override vocal roles. Use loudness only as acoustic evidence.
 The current clip script alone assigns plot events. Fixed reference settings carry
