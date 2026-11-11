@@ -347,6 +347,15 @@ def worker(job, cfg, original, song, drive):
                                      'structure': {'status':'ready','bpm':structure['bpm'],
                                                    'segments':structure['segments']} if structure else None}
             job['status'] = 'running'; write_state(job)
+        if job['request'].get('director_scaffold_version')==2:
+            # Reuse measured windows and user-authored SRT; no ASR, no model
+            # rerun, no fixed 4-act phase template, no extra 9B call.
+            from banana_mv.director_scaffold import ensure_scaffolds
+            ensure_scaffolds(job['request'],job['segments'])
+            job['audio_scaffold_summary']={'version':2,'segments':len(job['segments']),
+                                            'analysis_source':'existing_audio_and_supplied_srt',
+                                            'additional_model_calls':0}
+            write_state(job)
         needs_plan = (not approved_review and job['request'].get('director_version', 1) >= 2
                       and (job['request'].get('story_plan', True) or job['request'].get('director_schema') in (3,4,5))
                       and job['request'].get('rewrite', True)
@@ -582,7 +591,8 @@ def start(req):
     # Fusion V1 uses Python-only snapshots embedded in the SAME schema-5 allocation.
     # Version 3 must NEVER enter the older version-1 9B scene-state pipeline.
     # Legacy projects retain saved request fields on resume.
-    req.update(scene_state_version=3,persistent_scene_state=True)
+    req.update(scene_state_version=3,persistent_scene_state=True,
+               director_scaffold_version=2)
     if 'face_identity' in req and not isinstance(req['face_identity'], bool):
         raise ValueError('face_identity 必須為布林值。')
     req.setdefault('music_structure',False)
@@ -683,7 +693,8 @@ def plan_revision(job):
                          'segments':[{k:s.get(k) for k in ('index','start','seconds','frames',
                                       'model_frames','director_plan','direction_ending_contract') +
                                      (('fixed_reference_settings',) if 'fixed_reference_settings' in s else ()) +
-                                     (('audio_evidence',) if job['request'].get('music_structure') else ())}
+                                     (('audio_evidence',) if job['request'].get('music_structure') else ()) +
+                                     (('director_scaffold',) if job['request'].get('director_scaffold_version')==2 else ())}
                                      for s in job['segments']]})
 
 
