@@ -9,6 +9,8 @@ from banana_mv.director import MODES
 from banana_mv.lyrics_reference import excerpt
 from banana_mv.mv_scope import clip_ending, ending_contract
 from banana_mv.scene_state import SceneStateError, atomic_json, digest, rewrite_retry_count
+from banana_mv.creative_contract import creative_contract, CONTRACT_POLICY
+from banana_mv.fusion_state import ALLOCATION_RULES, compile_timeline, ending_note, fact_note
 
 
 # Match Toybox's native Ref2VA enhancement role, rather than treating the
@@ -288,12 +290,17 @@ def ensure_shoot_plan(cfg,req,segments,originals,work,rewrite):
           'intensity':req.get('intensity','high'),'dynamic_cuts':req.get('dynamic_cuts',True),
           'timeline':timeline,
           'ending_contract':contract}
+    fusion_enabled=req.get('scene_state_version')==3
+    if fusion_enabled:
+        task['format']='isolated_shoot_briefs_fusion_v1'
+        task['creative_contract']=creative_contract(req.get('prompt',''))
+        task['fusion_state_contract']=3
     complete_story=req.get('project_scope','full')=='full'
     fingerprint=digest(task)
     # Old schema-5 jobs did not fingerprint the two directing controls.
     old_task=dict(task,format='isolated_shoot_briefs_v1')
-    legacy_fingerprints={digest(dict(task,format='isolated_shoot_briefs_v2')),digest(old_task),digest({k:v for k,v in old_task.items()
-                               if k not in ('intensity','dynamic_cuts')})}
+    legacy_fingerprints=({digest(dict(task,format='isolated_shoot_briefs_v2')),digest(old_task),digest({k:v for k,v in old_task.items()
+                               if k not in ('intensity','dynamic_cuts')})} if not fusion_enabled else set())
     path=Path(work)/'director_plan.json'
     if path.is_file():
         plan=json.loads(path.read_text(encoding='utf-8'))
@@ -311,6 +318,8 @@ def ensure_shoot_plan(cfg,req,segments,originals,work,rewrite):
     system=(ALLOCATION_SYSTEM+'\n'+adaptation_direction(req)+'\n'+REFERENCE_PERFORMANCE+'\n'+CLIP_INTENSITY[req.get('intensity','high')]+
             '\nApply this intensity to filmable event development; leave shot selection to the clip director.\nSupported modes: '+
             ', '.join(MODES)+f'. Deliver {len(segments)} CLIP blocks.')
+    if fusion_enabled:
+        system+='\n'+CONTRACT_POLICY+'\n'+ALLOCATION_RULES
     if complete_story:
         system+='\nCOMPLETE STORY SCOPE: Read the ENTIRE user brief before allocation. Budget opening, development, decisive resolution and final image over the ENTIRE available duration. Work backward from the mandatory ending, reserve enough room for it, then fit the middle. Compress optional staging rather than dropping required events or stopping at paragraph N. Musical section labels guide accents only; no outro is required to finish a story. For a very short tail, complete decisive events in the preceding full interval and sustain their result in the tail. If the complete request cannot fit, explicitly report that rather than delivering an incomplete story.'
     attempts=parts
@@ -333,10 +342,20 @@ def ensure_shoot_plan(cfg,req,segments,originals,work,rewrite):
                 result.append({'index':seg['index'],'mode':row['mode'],'handoff_version':1,
                                'event':_bound(row['prompt'],len(originals))})
             _check_distinct_events(result)
+            if fusion_enabled:
+                # One upstream response specifies local changes; all status
+                # transitions and snapshots are owned/verified by Python.
+                timeline_states=compile_timeline(result)
+                for row,state_row in zip(result,timeline_states):
+                    row['event']=state_row['event']
+                    row['fusion_state']=state_row['fusion_state']
             plan={'version':5,'shared_setup':shared,'segments':result,'visual_verified':False,
                   'ending_contract':task['ending_contract'],'project_scope':req.get('project_scope','full')}
             outcome=re.search(r'^===\s*STORY OUTCOME\s*===\s*\n(.*?)(?=^===\s*CLIP\s)',text,re.S|re.M)
             if outcome:plan['story_outcome']=outcome[1].strip()  # Upstream only.
+            if fusion_enabled:
+                plan['fusion_version']=3
+                plan['creative_contract']=task['creative_contract']
             plan['content_sha256']=digest(plan);plan['input_sha256']=fingerprint
             atomic_json(path,plan)
             return plan
@@ -370,12 +389,15 @@ def write_shoot_prompt(cfg,req,segment,originals,tail,rewrite,progress=None):
     if tail:context['first_frame']='<Picture 1> is the actual previous last frame, not another actor.'
     guide=Path(cfg['guides']['ref']).read_text(encoding='utf-8')
     system=NATIVE_ENHANCER_SYSTEM+guide
+    fusion_note=''
+    if req.get('scene_state_version')==3:
+        fusion_note=fact_note(row.get('fusion_state') or segment.get('fusion_state'))+ending_note(context['ending'])
     text=(f"Target video duration: {segment['seconds']:.6f} seconds.\n"
           "Inspect the reference images labeled <Picture N> and use them according to the user's instructions.\n"
           "Choose shots that best express the original intent. "
           "Allocate shot durations and cut timing within the target duration according to content and pacing. "
           "Respect explicit shot requests, reference constraints and the guide's transition rules.\n"
-          "Original prompt:\nCurrent clip script:\n"+connected(row['event'])+"\n\n")
+          "Original prompt:\n"+fusion_note+"Current clip script:\n"+connected(row['event'])+"\n\n")
     text+="""Enhance this ONE clip script into the guide's final native H3 filming prompt,
 including its per-shot composition, lighting, actions and camera movement.
 When audio_evidence.music_structure is supplied, use its predicted local section
@@ -424,6 +446,8 @@ Keep microphone grip and free-hand gestures physically consistent.
 Follow this clip's ending; an ongoing clip needs no whole-work finale.
 Return only the native filming prompt, no analysis, JSON or management instructions.
 """
+    if req.get('scene_state_version')==3:
+        text+='\nNo split-screen, dual-panel or simultaneous composite frames. Intercut distinct locations in separate sequential views.'
     text+='\n'+adaptation_direction(req)
     text+='\n'+REFERENCE_PERFORMANCE
     text+='\n'+AUTO_FILMING

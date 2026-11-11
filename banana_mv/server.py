@@ -365,6 +365,8 @@ def worker(job, cfg, original, song, drive):
                     seg.pop('shoot_setup',None)
                     seg['fixed_reference_settings']=plan.get('shared_setup','')
                     seg['direction_ending_contract']=plan['ending_contract']
+                    if job['request'].get('scene_state_version')==3:
+                        seg['fusion_state']=row.get('fusion_state',{})
                 if plan['version']==4:
                     seg['prompt']=row['prompt']
                     (work/f'{seg["index"]:02d}_prompt_v1.txt').write_text(row['prompt'],encoding='utf-8')
@@ -379,6 +381,12 @@ def worker(job, cfg, original, song, drive):
                 if index and plan['version']!=5:
                     seg['previous_planned_event'] = plan['segments'][index-1]['event']
             job['director_plan'] = {'version':plan['version'], 'status':'ready'}
+            if job['request'].get('scene_state_version')==3:
+                # Metadata is planned state, not a claim that H3 visually obeyed.
+                job['fusion_state_summary']={'version':3,'visual_verified':False,
+                    'tracked_items':len({key for seg in job['segments']
+                                          for key in seg.get('fusion_state',{}).get('in',{})}),
+                    'model_calls_for_state':0}
             if job['request'].get('plan_review'):
                 job['plan_preview_setup']=plan.get('shared_setup','')
             job['status']='running'; write_state(job)
@@ -555,7 +563,10 @@ def start(req):
              sparse_attention=req.get('sparse_attention',req.get('acceleration',False)))
     from banana_mv.mv_scope import validate_scope
     validate_scope(req['project_scope'])
-    req['rewrite_retries']=rewrite_retry_count(req)
+    # Strict Fusion V1 core budget: one upstream allocation and one writer
+    # attempt per segment. Invalid 9B delivery fails visibly; no silent retries.
+    rewrite_retry_count(req)  # still validate the submitted 0-5 field
+    req['rewrite_retries']=0  # all newly-created Fusion tasks use version 3
     req.setdefault('plan_review',False)
     if not isinstance(req['plan_review'],bool):
         raise ValueError('先搓丹方必須為布林值。')
@@ -568,9 +579,10 @@ def start(req):
         raise ValueError('先搓丹方需要開啟本地提示詞改寫。')
     if not isinstance(req.get('persistent_scene_state',True),bool):
         raise ValueError('persistent_scene_state 必須為布林值。')
-    # New projects allocate once, then write each isolated native prompt. Old projects keep their
-    # original request fields when resumed; creating a new job never re-enables it.
-    req.update(scene_state_version=0,persistent_scene_state=False)
+    # Fusion V1 uses Python-only snapshots embedded in the SAME schema-5 allocation.
+    # Version 3 must NEVER enter the older version-1 9B scene-state pipeline.
+    # Legacy projects retain saved request fields on resume.
+    req.update(scene_state_version=3,persistent_scene_state=True)
     if 'face_identity' in req and not isinstance(req['face_identity'], bool):
         raise ValueError('face_identity 必須為布林值。')
     req.setdefault('music_structure',False)
@@ -639,6 +651,8 @@ def start(req):
              'duration':seconds,'segments':plan,'size':size,'seed':seed,'timeline_source':'decoded_audio',
              'output_size':output_size, 'title':str(req.get('project_name') or music['name'])[:120],
              'settings_version':2,
+             'fusion_state_summary':{'version':3,'visual_verified':False,
+                                     'tracked_items':0,'model_calls_for_state':0},
              'image_comfy':images_comfy[0], 'images_comfy':images_comfy,
              'note':'尚未完成 Colab GPU 實測；末幀接續不攜帶前段動作 latent。'}
         save_sources(job,original,song,drive)

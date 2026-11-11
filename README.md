@@ -23,6 +23,8 @@
 
 詳細範圍、版本來源與逐步驗收請見 [docs/FUSION_PLAN.md](docs/FUSION_PLAN.md)。
 
+**Fusion V1 初步實作與狀態標記規格：**[docs/FUSION_V1.md](docs/FUSION_V1.md)。V1 使用同一次全曲規劃輸出簡短狀態標記，再由 Python 驗證轉移；不新增狀態專屬模型呼叫。目前只驗證**計畫連續性**，尚不保證 H3 成片效果。
+
 ## 執行與資料隔離
 
 - Colab 筆記本：`BANANAMV_FUSION_LAB.ipynb`

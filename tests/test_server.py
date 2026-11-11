@@ -137,7 +137,10 @@ class ServerIntegration(unittest.TestCase):
                             if current['status'] in ('done','error'):break
                             time.sleep(.1)
                         self.assertEqual(current['status'],'done',current.get('error'))
-                        self.assertEqual(current['request']['scene_state_version'],0)
+                        self.assertEqual(current['request']['scene_state_version'],3)
+                        self.assertTrue(current['request']['persistent_scene_state'])
+                        self.assertEqual(current['fusion_state_summary']['version'],3)
+                        self.assertEqual(current['fusion_state_summary']['model_calls_for_state'],0)
                         self.assertEqual(current['request']['director_schema'],5)
                         self.assertFalse((app.job_dir(job['id'])/'scene_state.json').exists())
                         self.assertEqual(current['request']['srt_reference'],req['srt_reference'])
