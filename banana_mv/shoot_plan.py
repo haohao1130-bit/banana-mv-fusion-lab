@@ -11,6 +11,7 @@ from banana_mv.mv_scope import clip_ending, ending_contract
 from banana_mv.scene_state import SceneStateError, atomic_json, digest, rewrite_retry_count
 from banana_mv.creative_contract import creative_contract, CONTRACT_POLICY
 from banana_mv.fusion_state import ALLOCATION_RULES, compile_timeline, ending_note, fact_note
+from banana_mv.director_scaffold import ensure_scaffolds
 
 
 # Match Toybox's native Ref2VA enhancement role, rather than treating the
@@ -278,11 +279,20 @@ def _check_distinct_events(rows):
 def ensure_shoot_plan(cfg,req,segments,originals,work,rewrite):
     """Persist allocated scripts and fixed settings, without replanning per slot."""
     contract=ending_contract(req,segments[-1]['start']+segments[-1]['seconds'],segments)
+    scaffold_enabled=req.get('director_scaffold_version')==2
+    if scaffold_enabled:
+        # Precomputed by the worker after audio analysis; a direct/cached
+        # planner invocation has the same deterministic fallback.
+        ensure_scaffolds(req,segments)
     timeline=[]
     for seg in segments:
-        timeline.append({k:seg[k] for k in ('index','start','seconds')} | {
-            'local_srt':excerpt(req,seg),'audio_evidence':seg.get('audio_evidence',{}),
-            'ending':clip_ending(req,dict(seg,direction_ending_contract=contract))})
+        base={k:seg[k] for k in ('index','start','seconds')}
+        if scaffold_enabled:
+            timeline.append(dict(base,scaffold=seg['director_scaffold']))
+        else:
+            timeline.append(base | {
+                'local_srt':excerpt(req,seg),'audio_evidence':seg.get('audio_evidence',{}),
+                'ending':clip_ending(req,dict(seg,direction_ending_contract=contract))})
     task={'format':'isolated_shoot_briefs_v3',
           'brief':map_image_mentions(req.get('prompt',''),len(originals)),
           'adaptation':'FREE' if req.get('story_plan',True) else 'FAITHFUL',
@@ -292,7 +302,7 @@ def ensure_shoot_plan(cfg,req,segments,originals,work,rewrite):
           'ending_contract':contract}
     fusion_enabled=req.get('scene_state_version')==3
     if fusion_enabled:
-        task['format']='isolated_shoot_briefs_fusion_v1'
+        task['format']='isolated_shoot_briefs_fusion_v2' if scaffold_enabled else 'isolated_shoot_briefs_fusion_v1'
         task['creative_contract']=creative_contract(req.get('prompt',''))
         task['fusion_state_contract']=3
     complete_story=req.get('project_scope','full')=='full'
@@ -378,10 +388,21 @@ def write_shoot_prompt(cfg,req,segment,originals,tail,rewrite,progress=None):
         # Only numbering changes for an actual keyframe. Never compact actor slots.
         return re.sub(r'<Picture (\d+)>',lambda m:f'<Picture {int(m[1])+offset}>',text)
     fixed_setup=segment.get('fixed_reference_settings','')
+    scaffold_enabled=req.get('director_scaffold_version')==2
+    ending=clip_ending(req,segment)
     context={'seconds':segment['seconds'],'primary_mode':row['mode'],
-          'adaptation':'FREE' if req.get('story_plan',True) else 'FAITHFUL',
-          'local_srt':excerpt(req,segment),'audio_evidence':segment.get('audio_evidence',{}),
-          'ending':clip_ending(req,segment)}
+             'adaptation':'FREE' if req.get('story_plan',True) else 'FAITHFUL'}
+    if scaffold_enabled:
+        if segment.get('director_scaffold',{}).get('version')!=2:
+            # Normally saved by the worker. Derive without a model call
+            # for direct writer invocations and compatibility test fixtures.
+            from banana_mv.director_scaffold import build_scaffold
+            segment['director_scaffold']=build_scaffold(req,segment,ending)
+        context['scaffold']=segment['director_scaffold']
+    else:
+        context.update(local_srt=excerpt(req,segment),
+                       audio_evidence=segment.get('audio_evidence',{}),
+                       ending=ending)
     # Strip only the explicit upstream outcome block in legacy settings. No
     # keyword blacklist: identity, scene duties and current results stay intact.
     fixed_setup=re.split(r'(?m)^===\s*STORY OUTCOME\s*===\s*$',fixed_setup,maxsplit=1)[0].strip()
@@ -391,7 +412,9 @@ def write_shoot_prompt(cfg,req,segment,originals,tail,rewrite,progress=None):
     system=NATIVE_ENHANCER_SYSTEM+guide
     fusion_note=''
     if req.get('scene_state_version')==3:
-        fusion_note=fact_note(row.get('fusion_state') or segment.get('fusion_state'))+ending_note(context['ending'])
+        fusion_note=fact_note(row.get('fusion_state') or segment.get('fusion_state'))
+        if not scaffold_enabled:
+            fusion_note+=ending_note(ending)
     text=(f"Target video duration: {segment['seconds']:.6f} seconds.\n"
           "Inspect the reference images labeled <Picture N> and use them according to the user's instructions.\n"
           "Choose shots that best express the original intent. "
@@ -400,7 +423,7 @@ def write_shoot_prompt(cfg,req,segment,originals,tail,rewrite,progress=None):
           "Original prompt:\n"+fusion_note+"Current clip script:\n"+connected(row['event'])+"\n\n")
     text+="""Enhance this ONE clip script into the guide's final native H3 filming prompt,
 including its per-shot composition, lighting, actions and camera movement.
-When audio_evidence.music_structure is supplied, use its predicted local section
+When audio_evidence.music_structure or scaffold.music.predicted_structure is supplied, use its predicted local section
 changes and selected downbeats to motivate action payoffs, camera reveals and
 performance highlights. Write their timing into the shots, not an analysis appendix.
 Keep anticipation and contrast; do not cut on every beat. Labels can be wrong and
