@@ -332,6 +332,7 @@ def worker(job, cfg, original, song, drive):
                      and not seg.get('refresh_prompt')) for seg in job['segments'])
         if needs_analysis:
             job['status'] = 'analyzing_audio'; write_state(job)
+            audio_started=time.perf_counter()
             music_analysis = load_analysis(song, work/'audio_analysis.json')
             structure = None
             if job['request'].get('music_structure',False):
@@ -346,7 +347,22 @@ def worker(job, cfg, original, song, drive):
                                      'pulse': music_analysis['pulse'],
                                      'structure': {'status':'ready','bpm':structure['bpm'],
                                                    'segments':structure['segments']} if structure else None}
+            if job['request'].get('director_scaffold_version')==2:
+                job.setdefault('fusion_v2_metrics',{})['audio_analysis_ms']=round(
+                    (time.perf_counter()-audio_started)*1000,2)
             job['status'] = 'running'; write_state(job)
+        if job['request'].get('director_scaffold_version')==2:
+            # Reuse measured windows and user-authored SRT; no ASR, no model
+            # rerun, no fixed 4-act phase template, no extra 9B call.
+            from banana_mv.director_scaffold import ensure_scaffolds
+            scaffold_started=time.perf_counter()
+            ensure_scaffolds(job['request'],job['segments'])
+            job.setdefault('fusion_v2_metrics',{})['scaffold_build_ms']=round(
+                (time.perf_counter()-scaffold_started)*1000,2)
+            job['audio_scaffold_summary']={'version':2,'segments':len(job['segments']),
+                                            'analysis_source':'existing_audio_and_supplied_srt',
+                                            'additional_model_calls':0}
+            write_state(job)
         needs_plan = (not approved_review and job['request'].get('director_version', 1) >= 2
                       and (job['request'].get('story_plan', True) or job['request'].get('director_schema') in (3,4,5))
                       and job['request'].get('rewrite', True)
@@ -358,7 +374,13 @@ def worker(job, cfg, original, song, drive):
             if job['id'] in CANCEL:
                 job['status']='cancelled'; write_state(job); return
             job['status']='planning_story'; write_state(job)
+            allocation_started=time.perf_counter()
+            allocation_cached=(work/'director_plan.json').is_file()
             plan = ensure_plan(cfg, job['request'], job['segments'], original, work, backend.rewrite_local)
+            if job['request'].get('director_scaffold_version')==2:
+                metrics=job.setdefault('fusion_v2_metrics',{})
+                metrics['allocation_ms']=round((time.perf_counter()-allocation_started)*1000,2)
+                metrics['allocation_cached']=allocation_cached
             for index, (seg, row) in enumerate(zip(job['segments'], plan['segments'])):
                 seg['director_plan'] = row
                 if plan['version']==5:
@@ -469,9 +491,12 @@ def worker(job, cfg, original, song, drive):
                 prompt=normalize_mv_prompt(saved.read_text(encoding='utf-8'),len(original)+int(bool(tail)))
             else:
                 state_replanned=ledger is not None
+                writer_started=time.perf_counter()
                 prompt=local_prompt(cfg,job['request'],seg,original,tail,scene_input=state_in,
                                     event_catalog=ledger['event_catalog'] if ledger is not None else None,
                                     progress=rewrite_progress)
+                if job['request'].get('director_scaffold_version')==2:
+                    seg['fusion_v2_writer_ms']=round((time.perf_counter()-writer_started)*1000,2)
             if ledger is not None:
                 rewrite_debug=seg.pop('scene_state_rewrite_debug',None)
                 if rewrite_debug:
@@ -579,10 +604,15 @@ def start(req):
         raise ValueError('先搓丹方需要開啟本地提示詞改寫。')
     if not isinstance(req.get('persistent_scene_state',True),bool):
         raise ValueError('persistent_scene_state 必須為布林值。')
-    # Fusion V1 uses Python-only snapshots embedded in the SAME schema-5 allocation.
-    # Version 3 must NEVER enter the older version-1 9B scene-state pipeline.
-    # Legacy projects retain saved request fields on resume.
-    req.update(scene_state_version=3,persistent_scene_state=True)
+    # V2 is default for NEW Fusion jobs; 0 is an explicit V1 A/B baseline.
+    # Old jobs retain their persisted request on resume.
+    scaffold_version=req.get('director_scaffold_version',2)
+    if type(scaffold_version) is not int or scaffold_version not in (0,2):
+        raise ValueError('director_scaffold_version 僅支援 0（V1 對照）或 2（V2）。')
+    # Version 3 is the deterministic planned-state handoff and must NEVER
+    # activate the old version-1 multi-model scene memory workflow.
+    req.update(scene_state_version=3,persistent_scene_state=True,
+               director_scaffold_version=scaffold_version)
     if 'face_identity' in req and not isinstance(req['face_identity'], bool):
         raise ValueError('face_identity 必須為布林值。')
     req.setdefault('music_structure',False)
@@ -683,7 +713,8 @@ def plan_revision(job):
                          'segments':[{k:s.get(k) for k in ('index','start','seconds','frames',
                                       'model_frames','director_plan','direction_ending_contract') +
                                      (('fixed_reference_settings',) if 'fixed_reference_settings' in s else ()) +
-                                     (('audio_evidence',) if job['request'].get('music_structure') else ())}
+                                     (('audio_evidence',) if job['request'].get('music_structure') else ()) +
+                                     (('director_scaffold',) if job['request'].get('director_scaffold_version')==2 else ())}
                                      for s in job['segments']]})
 
 
